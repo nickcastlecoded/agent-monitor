@@ -1,4 +1,4 @@
-import { LayoutDashboard, Bot, Activity, Plus, FolderOpen } from "lucide-react";
+import { LayoutDashboard, Bot, Activity, Plus, FolderOpen, Users, LogOut, UserCircle } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -12,12 +12,18 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/lib/auth";
+import { Separator } from "@/components/ui/separator";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Workspace", url: "/workspace", icon: FolderOpen },
   { title: "Agents", url: "/agents", icon: Bot },
   { title: "Activity", url: "/activity", icon: Activity },
+];
+
+const adminItems = [
+  { title: "Users", url: "/users", icon: Users },
 ];
 
 function AgentMonitorLogo() {
@@ -41,6 +47,7 @@ function AgentMonitorLogo() {
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { user, logout, isAdmin } = useAuth();
 
   return (
     <Sidebar>
@@ -78,6 +85,31 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground px-3">
+              Admin
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location.startsWith(item.url)}
+                    >
+                      <Link href={item.url} data-testid={`nav-${item.title.toLowerCase()}`}>
+                        <item.icon className="w-4 h-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground px-3">
             Quick Actions
@@ -96,7 +128,31 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-3 space-y-3">
+        {user && (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 rounded-full bg-muted shrink-0">
+                  <UserCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium truncate">{user.name}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+                </div>
+              </div>
+              <button
+                onClick={logout}
+                className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                data-testid="button-logout"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <Separator />
+          </>
+        )}
         <a
           href="https://www.perplexity.ai/computer"
           target="_blank"

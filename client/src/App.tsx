@@ -7,7 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider, useTheme } from "@/lib/theme";
-import { Moon, Sun } from "lucide-react";
+import { AuthProvider, useAuth } from "@/lib/auth";
+import { Moon, Sun, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Dashboard from "@/pages/dashboard";
 import AgentDetail from "@/pages/agent-detail";
@@ -16,6 +17,8 @@ import CreateAgent from "@/pages/create-agent";
 import ActivityPage from "@/pages/activity";
 import WorkspacePage from "@/pages/workspace";
 import EditAgent from "@/pages/edit-agent";
+import UsersPage from "@/pages/users";
+import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 
 function ThemeToggle() {
@@ -43,6 +46,7 @@ function AppRouter() {
       <Route path="/create" component={CreateAgent} />
       <Route path="/workspace" component={WorkspacePage} />
       <Route path="/activity" component={ActivityPage} />
+      <Route path="/users" component={UsersPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -72,14 +76,34 @@ function AppLayout() {
   );
 }
 
+function AuthGate() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  return <AppLayout />;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <ThemeProvider>
-          <Router hook={useHashLocation}>
-            <AppLayout />
-          </Router>
+          <AuthProvider>
+            <Router hook={useHashLocation}>
+              <AuthGate />
+            </Router>
+          </AuthProvider>
         </ThemeProvider>
         <Toaster />
       </TooltipProvider>
