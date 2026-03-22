@@ -102,6 +102,40 @@ export const agentJobs = sqliteTable("agent_jobs", {
   assignedAt: text("assigned_at").notNull(),
 });
 
+export const execMessages = sqliteTable("exec_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  metadata: text("metadata"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const execAssignments = sqliteTable("exec_assignments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("pending"),
+  priority: text("priority").notNull().default("medium"),
+  assignedAgentId: integer("assigned_agent_id"),
+  initiativeId: integer("initiative_id"),
+  projectId: integer("project_id"),
+  dueDate: text("due_date"),
+  completedAt: text("completed_at"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const execReports = sqliteTable("exec_reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  type: text("type").notNull().default("general"),
+  status: text("status").notNull().default("draft"),
+  createdByAgentId: integer("created_by_agent_id"),
+  initiativeId: integer("initiative_id"),
+  projectId: integer("project_id"),
+  createdAt: text("created_at").notNull(),
+});
+
 export const insertAgentSchema = createInsertSchema(agents).omit({
   id: true,
   lastHeartbeat: true,
@@ -164,3 +198,23 @@ export type InsertProjectTask = z.infer<typeof insertProjectTaskSchema>;
 export type ProjectTask = typeof projectTasks.$inferSelect;
 export type InsertAgentJob = z.infer<typeof insertAgentJobSchema>;
 export type AgentJob = typeof agentJobs.$inferSelect;
+
+export const insertExecMessageSchema = createInsertSchema(execMessages).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertExecAssignmentSchema = createInsertSchema(execAssignments).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertExecReportSchema = createInsertSchema(execReports).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertExecMessage = z.infer<typeof insertExecMessageSchema>;
+export type ExecMessage = typeof execMessages.$inferSelect;
+export type InsertExecAssignment = z.infer<typeof insertExecAssignmentSchema>;
+export type ExecAssignment = typeof execAssignments.$inferSelect;
+export type InsertExecReport = z.infer<typeof insertExecReportSchema>;
+export type ExecReport = typeof execReports.$inferSelect;

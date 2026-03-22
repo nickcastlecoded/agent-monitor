@@ -1,4 +1,4 @@
-import { LayoutDashboard, Bot, Activity, Plus, FolderOpen, Users, LogOut, UserCircle, UsersRound, Target } from "lucide-react";
+import { LayoutDashboard, Bot, Activity, Plus, FolderOpen, Users, LogOut, UserCircle, UsersRound, Target, Crown } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -60,6 +60,27 @@ export function AppSidebar() {
         </Link>
       </SidebarHeader>
       <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-xs font-medium uppercase tracking-wider text-amber-500 px-3">
+            Executive
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location.startsWith("/executive")}
+                >
+                  <Link href="/executive" data-testid="nav-executive" className="text-amber-500 hover:text-amber-400">
+                    <Crown className="w-4 h-4" />
+                    <span className="font-medium">Executive Workspace</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground px-3">
             Navigation
