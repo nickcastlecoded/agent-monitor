@@ -30,6 +30,18 @@ export const statusEvents = sqliteTable("status_events", {
   changedAt: text("changed_at").notNull(),
 });
 
+export const workItems = sqliteTable("work_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("in_progress"),
+  result: text("result"),
+  startedAt: text("started_at").notNull(),
+  completedAt: text("completed_at"),
+  createdAt: text("created_at").notNull(),
+});
+
 export const insertAgentSchema = createInsertSchema(agents).omit({
   id: true,
   lastHeartbeat: true,
@@ -45,9 +57,16 @@ export const insertStatusEventSchema = createInsertSchema(statusEvents).omit({
   id: true,
 });
 
+export const insertWorkItemSchema = createInsertSchema(workItems).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertAgent = z.infer<typeof insertAgentSchema>;
 export type Agent = typeof agents.$inferSelect;
 export type InsertHeartbeat = z.infer<typeof insertHeartbeatSchema>;
 export type Heartbeat = typeof heartbeats.$inferSelect;
 export type InsertStatusEvent = z.infer<typeof insertStatusEventSchema>;
 export type StatusEvent = typeof statusEvents.$inferSelect;
+export type InsertWorkItem = z.infer<typeof insertWorkItemSchema>;
+export type WorkItem = typeof workItems.$inferSelect;

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Bot, Activity, Plus } from "lucide-react";
+import { LayoutDashboard, Bot, Activity, Plus, FolderOpen } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -15,6 +15,7 @@ import {
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Workspace", url: "/workspace", icon: FolderOpen },
   { title: "Agents", url: "/agents", icon: Bot },
   { title: "Activity", url: "/activity", icon: Activity },
 ];
