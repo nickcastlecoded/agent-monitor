@@ -1628,29 +1628,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // Debug: return query info if ?debug=1
-  if (req.query.debug === '1') {
-    return res.json({ url: req.url, query: req.query, method: req.method });
-  }
-
-  // Parse the path from the catch-all
-  // Vercel catch-all: req.query.path contains the segments after /api/
-  // Fallback: parse from req.url if query.path is missing
-  let pathSegments: string[] = [];
-  if (Array.isArray(req.query.path) && req.query.path.length > 0 && req.query.path[0] !== '') {
-    pathSegments = req.query.path;
-  } else if (typeof req.query.path === 'string' && req.query.path !== '') {
-    pathSegments = [req.query.path];
-  } else if (req.url) {
-    // Fallback: parse from URL directly
-    const urlPath = req.url.split('?')[0];
-    // Remove /api/ prefix if present
-    const cleaned = urlPath.replace(/^\/api\//, '').replace(/^\//, '');
-    if (cleaned) {
-      pathSegments = cleaned.split('/');
-    }
-  }
-  const path = '/' + pathSegments.join('/');
+  // Parse the path from the URL (most reliable method)
+  const urlPath = (req.url || '').split('?')[0];
+  const path = urlPath.replace(/^\/api/, '') || '/';
 
   try {
     // ── Agents ───────────────────────────────────────────
