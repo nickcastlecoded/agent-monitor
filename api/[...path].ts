@@ -1619,6 +1619,233 @@ async function handleWorkspaceById(req: VercelRequest, res: VercelResponse, id: 
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
+// ─── Automations ─────────────────────────────────────────────────────────
+
+async function handleAutomations(req: VercelRequest, res: VercelResponse) {
+  if (req.method === 'GET') {
+    const { data: automations, error } = await supabase
+      .from('automations')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Get team names and assigned agents for each automation
+    const teamIds = [...new Set((automations || []).map((a: any) => a.team_id).filter(Boolean))];
+    let teamMap: Record<number, string> = {};
+    if (teamIds.length > 0) {
+      const { data: teams } = await supabase.from('teams').select('id, name').in('id', teamIds);
+      if (teams) for (const t of teams) teamMap[t.id] = t.name;
+    }
+
+    const autoIds = (automations || []).map((a: any) => a.id);
+    let agentsByAutomation: Record<number, any[]> = {};
+    if (autoIds.length > 0) {
+      const { data: links } = await supabase
+        .from('automation_agents')
+        .select('*')
+        .in('automation_id', autoIds);
+      if (links && links.length > 0) {
+        const agentIds = [...new Set(links.map((l: any) => l.agent_id))];
+        const { data: agents } = await supabase.from('agents').select('id, name, title, agent_type').in('id', agentIds);
+        const agentMap: Record<number, any> = {};
+        if (agents) for (const a of agents) agentMap[a.id] = a;
+        for (const l of links) {
+          if (!agentsByAutomation[l.automation_id]) agentsByAutomation[l.automation_id] = [];
+          agentsByAutomation[l.automation_id].push({
+            ...agentMap[l.agent_id],
+            role: l.role,
+            linkId: l.id,
+          });
+        }
+      }
+    }
+
+    const result = (automations || []).map((a: any) => ({
+      ...a,
+      team_name: a.team_id ? teamMap[a.team_id] || null : null,
+      agents: agentsByAutomation[a.id] || [],
+    }));
+
+    return res.json(snakeToCamel(result));
+  }
+
+  if (req.method === 'POST') {
+    const { name, description, category, schedule, teamId, process: proc, inputLocation, outputLocation, agentIds } = req.body;
+
+    if (!name) return res.status(400).json({ error: 'name is required' });
+
+    const { data: automation, error } = await supabase
+      .from('automations')
+      .insert({
+        name,
+        description: description || null,
+        category: category || 'general',
+        schedule: schedule || null,
+        team_id: teamId || null,
+        process: proc || null,
+        input_location: inputLocation || null,
+        output_location: outputLocation || null,
+        enabled: true,
+        status: 'active',
+      })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Link agents if provided
+    if (agentIds && Array.isArray(agentIds) && agentIds.length > 0) {
+      const links = agentIds.map((entry: any) => ({
+        automation_id: automation.id,
+        agent_id: typeof entry === 'object' ? entry.agentId : entry,
+        role: typeof entry === 'object' ? entry.role || null : null,
+      }));
+      await supabase.from('automation_agents').insert(links);
+    }
+
+    return res.status(201).json(snakeToCamel(automation));
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+async function handleAutomationById(req: VercelRequest, res: VercelResponse, id: number) {
+  if (req.method === 'GET') {
+    const { data: automation, error } = await supabase
+      .from('automations')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !automation) return res.status(404).json({ error: 'Automation not found' });
+
+    let teamName = null;
+    if (automation.team_id) {
+      const { data: team } = await supabase.from('teams').select('name').eq('id', automation.team_id).single();
+      if (team) teamName = team.name;
+    }
+
+    const { data: links } = await supabase
+      .from('automation_agents')
+      .select('*')
+      .eq('automation_id', id);
+
+    let agents: any[] = [];
+    if (links && links.length > 0) {
+      const agentIds = links.map((l: any) => l.agent_id);
+      const { data: agentData } = await supabase.from('agents').select('id, name, title, agent_type').in('id', agentIds);
+      const agentMap: Record<number, any> = {};
+      if (agentData) for (const a of agentData) agentMap[a.id] = a;
+      agents = links.map((l: any) => ({ ...agentMap[l.agent_id], role: l.role, linkId: l.id }));
+    }
+
+    return res.json(snakeToCamel({ ...automation, team_name: teamName, agents }));
+  }
+
+  if (req.method === 'PATCH') {
+    const { data: existing } = await supabase.from('automations').select('id').eq('id', id).single();
+    if (!existing) return res.status(404).json({ error: 'Automation not found' });
+
+    const updates: Record<string, any> = {};
+    const keyMap: Record<string, string> = {
+      name: 'name',
+      description: 'description',
+      category: 'category',
+      status: 'status',
+      schedule: 'schedule',
+      teamId: 'team_id',
+      process: 'process',
+      inputLocation: 'input_location',
+      outputLocation: 'output_location',
+      enabled: 'enabled',
+    };
+
+    for (const [camelKey, snakeKey] of Object.entries(keyMap)) {
+      if (req.body[camelKey] !== undefined) {
+        updates[snakeKey] = req.body[camelKey];
+      }
+    }
+    updates.updated_at = new Date().toISOString();
+
+    const { data: updated, error } = await supabase
+      .from('automations')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(snakeToCamel(updated));
+  }
+
+  if (req.method === 'DELETE') {
+    const { data: existing } = await supabase.from('automations').select('id').eq('id', id).single();
+    if (!existing) return res.status(404).json({ error: 'Automation not found' });
+
+    const { error } = await supabase.from('automations').delete().eq('id', id);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(204).end();
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+async function handleAutomationAgents(req: VercelRequest, res: VercelResponse, automationId: number) {
+  if (req.method === 'POST') {
+    const { agentId, role } = req.body;
+    if (!agentId) return res.status(400).json({ error: 'agentId is required' });
+
+    const { data: link, error } = await supabase
+      .from('automation_agents')
+      .insert({ automation_id: automationId, agent_id: agentId, role: role || null })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(201).json(snakeToCamel(link));
+  }
+
+  if (req.method === 'DELETE') {
+    const { agentId } = req.body;
+    if (!agentId) return res.status(400).json({ error: 'agentId is required' });
+
+    const { error } = await supabase
+      .from('automation_agents')
+      .delete()
+      .eq('automation_id', automationId)
+      .eq('agent_id', agentId);
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(204).end();
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+async function handleAutomationToggle(req: VercelRequest, res: VercelResponse, id: number) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { data: automation, error: fetchError } = await supabase
+    .from('automations')
+    .select('id, enabled')
+    .eq('id', id)
+    .single();
+
+  if (fetchError || !automation) return res.status(404).json({ error: 'Automation not found' });
+
+  const newEnabled = !automation.enabled;
+  const { data: updated, error } = await supabase
+    .from('automations')
+    .update({ enabled: newEnabled, status: newEnabled ? 'active' : 'paused', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(snakeToCamel(updated));
+}
+
 // ─── Main Router ───────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -1748,6 +1975,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const userMatch = path.match(/^\/users\/(\d+)$/);
     if (userMatch) {
       return handleUserById(req, res, Number(userMatch[1]));
+    }
+
+    // ── Automations ─────────────────────────────────────
+    if (path === '/automations') {
+      return handleAutomations(req, res);
+    }
+    const automationToggleMatch = path.match(/^\/automations\/(\d+)\/toggle$/);
+    if (automationToggleMatch) {
+      return handleAutomationToggle(req, res, Number(automationToggleMatch[1]));
+    }
+    const automationAgentsMatch = path.match(/^\/automations\/(\d+)\/agents$/);
+    if (automationAgentsMatch) {
+      return handleAutomationAgents(req, res, Number(automationAgentsMatch[1]));
+    }
+    const automationMatch = path.match(/^\/automations\/(\d+)$/);
+    if (automationMatch) {
+      return handleAutomationById(req, res, Number(automationMatch[1]));
     }
 
     // ── Workspace ────────────────────────────────────────

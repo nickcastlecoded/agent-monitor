@@ -21,6 +21,7 @@ import TeamsPage from "@/pages/teams";
 import InitiativesPage from "@/pages/initiatives";
 import UsersPage from "@/pages/users";
 import ExecutiveWorkspace from "@/pages/executive-workspace";
+import AutomationsPage from "@/pages/automations";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 
@@ -48,6 +49,7 @@ function AppRouter() {
       <Route path="/agents/:id" component={AgentDetail} />
       <Route path="/create" component={CreateAgent} />
       <Route path="/executive" component={ExecutiveWorkspace} />
+      <Route path="/automations" component={AutomationsPage} />
       <Route path="/workspace" component={WorkspacePage} />
       <Route path="/teams" component={TeamsPage} />
       <Route path="/initiatives" component={InitiativesPage} />

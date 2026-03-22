@@ -199,6 +199,31 @@ export type ProjectTask = typeof projectTasks.$inferSelect;
 export type InsertAgentJob = z.infer<typeof insertAgentJobSchema>;
 export type AgentJob = typeof agentJobs.$inferSelect;
 
+export const automations = sqliteTable("automations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category").notNull().default("general"),
+  status: text("status").notNull().default("active"),
+  schedule: text("schedule"),
+  teamId: integer("team_id"),
+  process: text("process"),
+  inputLocation: text("input_location"),
+  outputLocation: text("output_location"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  startedAt: text("started_at").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const automationAgents = sqliteTable("automation_agents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  automationId: integer("automation_id").notNull(),
+  agentId: integer("agent_id").notNull(),
+  role: text("role"),
+  assignedAt: text("assigned_at").notNull(),
+});
+
 export const insertExecMessageSchema = createInsertSchema(execMessages).omit({
   id: true,
   createdAt: true,
@@ -218,3 +243,19 @@ export type InsertExecAssignment = z.infer<typeof insertExecAssignmentSchema>;
 export type ExecAssignment = typeof execAssignments.$inferSelect;
 export type InsertExecReport = z.infer<typeof insertExecReportSchema>;
 export type ExecReport = typeof execReports.$inferSelect;
+
+export const insertAutomationSchema = createInsertSchema(automations).omit({
+  id: true,
+  startedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertAutomationAgentSchema = createInsertSchema(automationAgents).omit({
+  id: true,
+  assignedAt: true,
+});
+
+export type InsertAutomation = z.infer<typeof insertAutomationSchema>;
+export type Automation = typeof automations.$inferSelect;
+export type InsertAutomationAgent = z.infer<typeof insertAutomationAgentSchema>;
+export type AutomationAgent = typeof automationAgents.$inferSelect;
