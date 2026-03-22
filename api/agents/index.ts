@@ -36,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'POST') {
-    const { name, description, task, schedule, instructions, status, scope, outputDriveFolder, inputDriveFiles, frequency, memoryDriveFolder } = req.body;
+    const { name, description, task, schedule, instructions, status, scope, outputDriveFolder, inputDriveFiles, frequency, memoryDriveFolder, connectedTools } = req.body;
 
     if (!name || !task || !schedule) {
       return res.status(400).json({ error: 'name, task, and schedule are required' });
@@ -56,6 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         input_drive_files: inputDriveFiles || null,
         frequency: frequency || null,
         memory_drive_folder: memoryDriveFolder || null,
+        connected_tools: connectedTools || null,
       })
       .select()
       .single();

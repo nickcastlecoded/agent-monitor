@@ -18,6 +18,7 @@ export const agents = sqliteTable("agents", {
   inputDriveFiles: text("input_drive_files"),
   frequency: text("frequency"),
   memoryDriveFolder: text("memory_drive_folder"),
+  connectedTools: text("connected_tools"),
 });
 
 export const heartbeats = sqliteTable("heartbeats", {

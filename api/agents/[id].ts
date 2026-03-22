@@ -63,6 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       inputDriveFiles: 'input_drive_files',
       frequency: 'frequency',
       memoryDriveFolder: 'memory_drive_folder',
+      connectedTools: 'connected_tools',
     };
 
     for (const [camelKey, snakeKey] of Object.entries(keyMap)) {

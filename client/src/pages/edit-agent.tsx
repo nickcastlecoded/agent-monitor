@@ -12,6 +12,7 @@ import {
   Plus,
   X,
   ExternalLink,
+  Plug,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -42,6 +43,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Agent } from "@shared/schema";
+import { ToolConnector } from "@/components/tool-connector";
 import { useState, useEffect } from "react";
 
 const editAgentSchema = z.object({
@@ -55,6 +57,7 @@ const editAgentSchema = z.object({
   inputDriveFiles: z.string().max(2000).optional().or(z.literal("")),
   frequency: z.string().optional().or(z.literal("")),
   memoryDriveFolder: z.string().max(500).optional().or(z.literal("")),
+  connectedTools: z.string().optional().or(z.literal("")),
 });
 
 type EditAgentForm = z.infer<typeof editAgentSchema>;
@@ -196,6 +199,7 @@ export default function EditAgent() {
       inputDriveFiles: "",
       frequency: "",
       memoryDriveFolder: "",
+      connectedTools: "",
     },
   });
 
@@ -213,6 +217,7 @@ export default function EditAgent() {
         inputDriveFiles: (agent as any).inputDriveFiles || "",
         frequency: (agent as any).frequency || "",
         memoryDriveFolder: (agent as any).memoryDriveFolder || "",
+        connectedTools: (agent as any).connectedTools || "",
       });
     }
   }, [agent, form]);
@@ -543,6 +548,36 @@ export default function EditAgent() {
                       </FormDescription>
                       <FormControl>
                         <DriveFileInput
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Connected Tools */}
+            <Card className="border-card-border">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Plug className="w-4 h-4 text-muted-foreground" />
+                  Connected Tools
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  External APIs and services this agent can access
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FormField
+                  control={form.control}
+                  name="connectedTools"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <ToolConnector
                           value={field.value || ""}
                           onChange={field.onChange}
                         />

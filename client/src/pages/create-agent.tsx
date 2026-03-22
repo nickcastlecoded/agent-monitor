@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { ArrowLeft, Rocket, Crosshair, FolderOpen, Brain, Clock } from "lucide-react";
+import { ArrowLeft, Rocket, Crosshair, FolderOpen, Brain, Clock, Plug } from "lucide-react";
 import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/form";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ToolConnector } from "@/components/tool-connector";
 
 const createAgentSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -41,6 +42,7 @@ const createAgentSchema = z.object({
   outputDriveFolder: z.string().max(500).optional().or(z.literal("")),
   frequency: z.string().optional().or(z.literal("")),
   memoryDriveFolder: z.string().max(500).optional().or(z.literal("")),
+  connectedTools: z.string().optional().or(z.literal("")),
 });
 
 type CreateAgentForm = z.infer<typeof createAgentSchema>;
@@ -75,6 +77,7 @@ export default function CreateAgent() {
       outputDriveFolder: "",
       frequency: "",
       memoryDriveFolder: "",
+      connectedTools: "",
     },
   });
 
@@ -328,6 +331,32 @@ export default function CreateAgent() {
                             data-testid="input-memory-folder"
                           />
                         </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Separator className="my-2" />
+
+                <div className="space-y-1 pt-1">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Plug className="w-4 h-4 text-muted-foreground" />
+                    Connected Tools
+                  </div>
+                  <p className="text-xs text-muted-foreground">Optional — connect external APIs and services</p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="connectedTools"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <ToolConnector
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
