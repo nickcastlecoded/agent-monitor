@@ -1886,7 +1886,7 @@ You have visibility into the entire organization:
 - Team Agents: ${JSON.stringify(agents?.map((a: any) => ({ id: a.id, name: a.name, title: a.title, type: a.agent_type, status: a.status, role: a.task })) || [])}
 - Active Initiatives: ${JSON.stringify(initiatives?.map((i: any) => ({ id: i.id, name: i.name, status: i.status })) || [])}
 
-When given direction or asked questions, think strategically. When action is needed, use your tools to create initiatives, projects, tasks, or assignments. Be concise and direct. When you take an action, briefly mention what you did. Address the user respectfully as the Board of Directors.`;
+When given direction or asked questions, think strategically. When action is needed, use your tools to create initiatives, projects, tasks, or assignments. You can also DIRECTLY PROMPT other agents to execute work using the prompt_agent tool — this activates them in real-time to carry out your directives. When the Board asks you to get an agent to do something, use prompt_agent to delegate to them immediately. Be concise and direct. When you take an action, briefly mention what you did. Address the user respectfully as the Board of Directors.`;
 
   const tools: Anthropic.Tool[] = [
     {
@@ -1949,6 +1949,18 @@ When given direction or asked questions, think strategically. When action is nee
           priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
         },
         required: ['title', 'description'],
+      },
+    },
+    {
+      name: 'prompt_agent',
+      description: 'Send a directive to an agent and have them execute it autonomously. The agent will take action, delegate to other agents if needed, and report back. Use this when the Board asks you to activate an agent or assign real-time work.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          agentId: { type: 'number', description: 'ID of the agent to prompt' },
+          prompt: { type: 'string', description: 'The directive, question, or task to give the agent. Be specific about what you want them to do.' },
+        },
+        required: ['agentId', 'prompt'],
       },
     },
   ];
@@ -2015,6 +2027,26 @@ When given direction or asked questions, think strategically. When action is nee
         result = error ? `Error: ${error.message}` : `Assignment created: "${assignment.title}" (ID: ${assignment.id})`;
         if (!error) actionsTaken.push(`Created assignment: ${assignment.title}`);
 
+      } else if (block.name === 'prompt_agent') {
+        try {
+          // Nick Castle (CEO) prompts another agent via the shared engine
+          const ceoAgentId = 3; // Nick Castle's agent ID
+          const subResult = await executeAgentPrompt(
+            input.agentId,
+            input.prompt,
+            ceoAgentId,
+            null,
+            0
+          );
+          result = `Agent executed and responded:\n${subResult.response}`;
+          actionsTaken.push(`Prompted agent #${input.agentId}: "${input.prompt.slice(0, 80)}${input.prompt.length > 80 ? '...' : ''}"`);
+          if (subResult.actionsTaken.length > 0) {
+            actionsTaken.push(...subResult.actionsTaken.map(a => `  └ ${a}`));
+          }
+        } catch (err: any) {
+          result = `Error prompting agent: ${err.message}`;
+        }
+
       } else {
         result = `Unknown tool: ${block.name}`;
       }
@@ -2049,19 +2081,40 @@ When given direction or asked questions, think strategically. When action is nee
   return res.json({ response: responseText, actionsTaken });
 }
 
-// ─── Agent Run (AI) ─────────────────────────────────────────────────────────
+// ─── Core Agent Prompt Execution Engine ──────────────────────────────────────
+// Shared by: executive chat (prompt_agent tool), direct prompt UI, agent-to-agent
 
-async function handleAgentRun(req: VercelRequest, res: VercelResponse, agentId: number) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+async function executeAgentPrompt(
+  agentId: number,
+  prompt: string,
+  fromAgentId: number | null,
+  parentMessageId: number | null,
+  depth: number = 0
+): Promise<{ response: string; messageId: number; actionsTaken: string[] }> {
+  const MAX_DEPTH = 3; // prevent infinite agent-to-agent loops
+  if (depth > MAX_DEPTH) {
+    return { response: `Delegation depth limit (${MAX_DEPTH}) reached. Cannot delegate further.`, messageId: 0, actionsTaken: [] };
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on the server' });
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured on the server');
 
   const { data: agent, error: agentError } = await supabase
     .from('agents').select('*').eq('id', agentId).single();
 
-  if (agentError || !agent) return res.status(404).json({ error: 'Agent not found' });
+  if (agentError || !agent) throw new Error('Agent not found');
 
+  // Create the message record (pending)
+  const { data: msgRecord } = await supabase.from('agent_messages').insert({
+    from_agent_id: fromAgentId,
+    to_agent_id: agentId,
+    prompt,
+    status: 'running',
+    parent_message_id: parentMessageId,
+  }).select().single();
+  const messageId = msgRecord?.id || 0;
+
+  // Gather agent context
   const { data: tasks } = await supabase
     .from('project_tasks')
     .select('id, title, description, status, priority')
@@ -2069,43 +2122,220 @@ async function handleAgentRun(req: VercelRequest, res: VercelResponse, agentId: 
     .neq('status', 'completed')
     .limit(10);
 
+  const { data: allAgents } = await supabase
+    .from('agents').select('id, name, title, agent_type, status, task')
+    .neq('id', agentId);
+
   const taskList = tasks && tasks.length > 0
     ? tasks.map((t: any) => `- [${t.status}] ${t.title}: ${t.description || 'No description'} (Priority: ${t.priority})`).join('\n')
     : 'No tasks currently assigned.';
+
+  const otherAgentsList = allAgents && allAgents.length > 0
+    ? allAgents.map((a: any) => `- ${a.name} (ID: ${a.id}) — ${a.title || a.agent_type || 'agent'}: ${a.task?.slice(0, 100) || 'No task defined'}`).join('\n')
+    : 'No other agents available.';
 
   const systemPrompt = `You are ${agent.name}${agent.title ? `, ${agent.title}` : ''}. Your role: ${agent.task}.${agent.instructions ? `\n\nInstructions: ${agent.instructions}` : ''}
 
 Current assigned tasks:
 ${taskList}
 
-Provide a brief status update on your work. Be specific about what you are doing to move your tasks forward and identify any blockers.`;
+Other agents you can delegate to:
+${otherAgentsList}
+
+You are an autonomous agent. When given a directive, EXECUTE it — take real action, produce deliverables, update statuses, and delegate to other agents when their expertise is needed. Be specific and actionable in your responses. Report what you DID, not what you WOULD do.`;
+
+  // Agent tools: prompt other agents + update task statuses
+  const agentTools: Anthropic.Tool[] = [
+    {
+      name: 'prompt_agent',
+      description: 'Send a directive to another agent and get their response. Use this to delegate work to specialists.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          agentId: { type: 'number', description: 'ID of the agent to prompt' },
+          prompt: { type: 'string', description: 'The directive or task to give the agent' },
+        },
+        required: ['agentId', 'prompt'],
+      },
+    },
+    {
+      name: 'update_task_status',
+      description: 'Update the status of one of your assigned tasks',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          taskId: { type: 'number', description: 'ID of the task' },
+          status: { type: 'string', enum: ['todo', 'in_progress', 'completed', 'blocked'], description: 'New status' },
+        },
+        required: ['taskId', 'status'],
+      },
+    },
+    {
+      name: 'create_task',
+      description: 'Create a new task in a project and optionally assign it to an agent',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          projectId: { type: 'number', description: 'ID of the parent project' },
+          assignedAgentId: { type: 'number', description: 'Optional agent ID to assign this task to' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+        },
+        required: ['title', 'description', 'projectId'],
+      },
+    },
+  ];
+
+  // Update agent status to running
+  await supabase.from('agents').update({ status: 'running', last_heartbeat: new Date().toISOString() }).eq('id', agentId);
 
   const anthropic = new Anthropic({ apiKey });
+  const actionsTaken: string[] = [];
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 1024,
+  let claudeMessages: any[] = [{ role: 'user', content: prompt }];
+
+  let response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 2048,
     system: systemPrompt,
-    messages: [{ role: 'user', content: 'Provide your current status update.' }],
+    tools: agentTools,
+    messages: claudeMessages,
   });
+
+  // Agentic tool_use loop
+  while (response.stop_reason === 'tool_use') {
+    const assistantContent = response.content;
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+    for (const block of assistantContent) {
+      if (block.type !== 'tool_use') continue;
+      const input = block.input as Record<string, any>;
+      let result: string;
+
+      if (block.name === 'prompt_agent') {
+        try {
+          const subResult = await executeAgentPrompt(
+            input.agentId,
+            input.prompt,
+            agentId,
+            messageId,
+            depth + 1
+          );
+          result = `Agent responded: ${subResult.response}`;
+          actionsTaken.push(`Delegated to agent #${input.agentId}: "${input.prompt.slice(0, 80)}..."`);
+        } catch (err: any) {
+          result = `Error prompting agent: ${err.message}`;
+        }
+
+      } else if (block.name === 'update_task_status') {
+        const { error } = await supabase
+          .from('project_tasks')
+          .update({ status: input.status })
+          .eq('id', input.taskId);
+        result = error ? `Error: ${error.message}` : `Task #${input.taskId} status updated to ${input.status}`;
+        if (!error) actionsTaken.push(`Updated task #${input.taskId} → ${input.status}`);
+
+      } else if (block.name === 'create_task') {
+        const { data: task, error } = await supabase
+          .from('project_tasks')
+          .insert({ project_id: input.projectId, title: input.title, description: input.description, status: 'todo', assigned_agent_id: input.assignedAgentId || null, priority: input.priority || 'medium' })
+          .select().single();
+        result = error ? `Error: ${error.message}` : `Task created: "${task.title}" (ID: ${task.id})`;
+        if (!error) actionsTaken.push(`Created task: ${task.title}`);
+
+      } else {
+        result = `Unknown tool: ${block.name}`;
+      }
+
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+    }
+
+    claudeMessages.push({ role: 'assistant', content: assistantContent });
+    claudeMessages.push({ role: 'user', content: toolResults });
+
+    response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      system: systemPrompt,
+      tools: agentTools,
+      messages: claudeMessages,
+    });
+  }
 
   const responseText = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
     .map(b => b.text)
     .join('\n');
 
-  // Update agent to running, record heartbeat, then set back to idle
-  await supabase.from('agents').update({ status: 'running', last_heartbeat: new Date().toISOString() }).eq('id', agentId);
+  // Record heartbeat and update message
+  await supabase.from('heartbeats')
+    .insert({ agent_id: agentId, status: 'idle', message: responseText.slice(0, 500) });
+  await supabase.from('status_events')
+    .insert({ agent_id: agentId, old_status: 'running', new_status: 'idle' });
+  await supabase.from('agents')
+    .update({ status: 'idle', last_heartbeat: new Date().toISOString() }).eq('id', agentId);
 
-  const { data: heartbeat } = await supabase
-    .from('heartbeats')
-    .insert({ agent_id: agentId, status: 'idle', message: responseText })
-    .select().single();
+  // Update the message record with response
+  await supabase.from('agent_messages').update({
+    response: responseText,
+    status: 'completed',
+    completed_at: new Date().toISOString(),
+    metadata: actionsTaken.length > 0 ? JSON.stringify({ actionsTaken }) : null,
+  }).eq('id', messageId);
 
-  await supabase.from('status_events').insert({ agent_id: agentId, old_status: agent.status, new_status: 'idle' });
-  await supabase.from('agents').update({ status: 'idle' }).eq('id', agentId);
+  return { response: responseText, messageId, actionsTaken };
+}
 
-  return res.json({ response: responseText, heartbeat: snakeToCamel(heartbeat) });
+// ─── Agent Prompt (direct prompt endpoint) ──────────────────────────────────
+
+async function handleAgentPrompt(req: VercelRequest, res: VercelResponse, agentId: number) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { prompt, fromAgentId } = req.body || {};
+  if (!prompt) return res.status(400).json({ error: 'prompt is required' });
+
+  try {
+    const result = await executeAgentPrompt(agentId, prompt, fromAgentId || null, null, 0);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── Agent Messages (communication history) ──────────────────────────────────
+
+async function handleAgentMessages(req: VercelRequest, res: VercelResponse, agentId: number) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { data, error } = await supabase
+    .from('agent_messages')
+    .select('*')
+    .or(`to_agent_id.eq.${agentId},from_agent_id.eq.${agentId}`)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(snakeToCamel(data || []));
+}
+
+// ─── Agent Run (AI) — now uses the shared engine ────────────────────────────
+
+async function handleAgentRun(req: VercelRequest, res: VercelResponse, agentId: number) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  try {
+    const result = await executeAgentPrompt(
+      agentId,
+      'Provide your current status update. Review your assigned tasks and report what you are actively doing, what progress you have made, and any blockers.',
+      null,
+      null,
+      0
+    );
+    return res.json({ response: result.response, actionsTaken: result.actionsTaken });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
 }
 
 // ─── Main Router ───────────────────────────────────────────────────────────
@@ -2137,6 +2367,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const agentRunMatch = path.match(/^\/agents\/(\d+)\/run$/);
     if (agentRunMatch) {
       return handleAgentRun(req, res, Number(agentRunMatch[1]));
+    }
+    const agentPromptMatch = path.match(/^\/agents\/(\d+)\/prompt$/);
+    if (agentPromptMatch) {
+      return handleAgentPrompt(req, res, Number(agentPromptMatch[1]));
+    }
+    const agentMessagesMatch = path.match(/^\/agents\/(\d+)\/messages$/);
+    if (agentMessagesMatch) {
+      return handleAgentMessages(req, res, Number(agentMessagesMatch[1]));
     }
     const agentEventsMatch = path.match(/^\/agents\/(\d+)\/events$/);
     if (agentEventsMatch) {
