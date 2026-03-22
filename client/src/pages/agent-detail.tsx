@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
-import { ArrowLeft, Bot, Clock, Trash2, Calendar, FileText, Settings, FolderOpen, FileInput, Brain, Crosshair, ExternalLink } from "lucide-react";
+import { ArrowLeft, Bot, Clock, Trash2, Calendar, FileText, Settings, FolderOpen, FileInput, Brain, Crosshair, ExternalLink, Play, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,18 @@ export default function AgentDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       toast({ title: "Agent deleted" });
       navigate("/");
+    },
+  });
+
+  const runMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/agents/${id}/run`).then((r) => r.json()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", id, "heartbeats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", id] });
+      toast({ title: "Agent ran successfully", description: data?.response?.slice(0, 100) + (data?.response?.length > 100 ? "..." : "") });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to run agent", description: err.message, variant: "destructive" });
     },
   });
 
@@ -106,6 +118,20 @@ export default function AgentDetail() {
             </div>
             <div className="flex items-center gap-2">
               <StatusBadge status={agent.status} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => runMutation.mutate()}
+                disabled={runMutation.isPending}
+                data-testid="button-run-agent"
+              >
+                {runMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4 mr-1.5" />
+                )}
+                {runMutation.isPending ? "Running..." : "Run Agent"}
+              </Button>
               <Link href={`/agents/${id}/edit`}>
                 <Button
                   variant="outline"

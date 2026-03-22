@@ -138,20 +138,17 @@ function ChatTab() {
 
   const sendMutation = useMutation({
     mutationFn: async (content: string) => {
-      // Send user message
-      await apiRequest("POST", "/api/executive/messages", {
-        role: "user",
-        content,
-      });
-      // Send CEO placeholder response
-      await apiRequest("POST", "/api/executive/messages", {
-        role: "ceo",
-        content: `Acknowledged. I'll review "${content.slice(0, 60)}${content.length > 60 ? "..." : ""}" and coordinate with the team. Stand by for updates.`,
-      });
+      const res = await apiRequest("POST", "/api/executive/chat", { message: content });
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/executive/messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/initiatives"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/executive/assignments"] });
       setMessage("");
+      if (data?.actionsTaken?.length > 0) {
+        toast({ title: "Nick Castle took action", description: data.actionsTaken.join(", ") });
+      }
     },
     onError: (err: Error) => {
       toast({ title: "Failed to send message", description: err.message, variant: "destructive" });
@@ -275,10 +272,13 @@ function ChatTab() {
             ) : (
               <Send className="w-4 h-4" />
             )}
+            <span className="sr-only">{sendMutation.isPending ? "Nick Castle is thinking..." : "Send"}</span>
           </Button>
         </div>
         <p className="text-[10px] text-muted-foreground mt-1.5">
-          Press Enter to send, Shift+Enter for new line
+          {sendMutation.isPending
+            ? "Nick Castle is thinking..."
+            : "Press Enter to send, Shift+Enter for new line"}
         </p>
       </div>
     </div>

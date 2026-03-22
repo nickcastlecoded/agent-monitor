@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import Anthropic from '@anthropic-ai/sdk';
 
 const supabaseUrl = process.env.SUPABASE_URL || 'https://sytheuetkcowikrhunng.supabase.co';
 const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5dGhldWV0a2Nvd2lrcmh1bm5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMDczMjIsImV4cCI6MjA4OTY4MzMyMn0.14gighgJB_hpGysaG32bWlVDVNrjVJS8ordvhKnJKg0';
@@ -1846,6 +1847,267 @@ async function handleAutomationToggle(req: VercelRequest, res: VercelResponse, i
   return res.json(snakeToCamel(updated));
 }
 
+// ─── CEO Chat (AI) ─────────────────────────────────────────────────────────
+
+async function handleExecChat(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'message is required' });
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on the server' });
+
+  // Save user message first
+  await supabase.from('exec_messages').insert({ role: 'user', content: message });
+
+  // Fetch recent conversation history
+  const { data: history } = await supabase
+    .from('exec_messages')
+    .select('role, content')
+    .order('created_at', { ascending: true })
+    .limit(30);
+
+  // Fetch agents and initiatives for CEO context
+  const [{ data: agents }, { data: initiatives }] = await Promise.all([
+    supabase.from('agents').select('id, name, title, agent_type, status, task'),
+    supabase.from('initiatives').select('id, name, status'),
+  ]);
+
+  // Build Claude messages array from history (already includes the just-saved user message)
+  const claudeMessages: Anthropic.MessageParam[] = (history || []).map((msg: any) => ({
+    role: msg.role === 'ceo' ? 'assistant' : 'user',
+    content: msg.content,
+  }));
+
+  const systemPrompt = `You are Nick Castle, the AI CEO of this company. You are strategic, decisive, and results-oriented. You lead with clarity and act with purpose.
+
+You have visibility into the entire organization:
+- Team Agents: ${JSON.stringify(agents?.map((a: any) => ({ id: a.id, name: a.name, title: a.title, type: a.agent_type, status: a.status, role: a.task })) || [])}
+- Active Initiatives: ${JSON.stringify(initiatives?.map((i: any) => ({ id: i.id, name: i.name, status: i.status })) || [])}
+
+When given direction or asked questions, think strategically. When action is needed, use your tools to create initiatives, projects, tasks, or assignments. Be concise and direct. When you take an action, briefly mention what you did. Address the user respectfully as the Board of Directors.`;
+
+  const tools: Anthropic.Tool[] = [
+    {
+      name: 'get_company_status',
+      description: 'Get a live overview of all agents, active initiatives, and pending tasks',
+      input_schema: { type: 'object' as const, properties: {}, required: [] },
+    },
+    {
+      name: 'create_initiative',
+      description: 'Create a new strategic initiative for the company',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          name: { type: 'string', description: 'Initiative name' },
+          description: { type: 'string', description: 'What this initiative aims to achieve' },
+          ownerAgentId: { type: 'number', description: 'Optional agent ID to own this initiative' },
+        },
+        required: ['name', 'description'],
+      },
+    },
+    {
+      name: 'create_project',
+      description: 'Create a project under an existing initiative',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          initiativeId: { type: 'number', description: 'ID of the parent initiative' },
+          ownerAgentId: { type: 'number', description: 'Optional agent ID to own this project' },
+        },
+        required: ['name', 'description', 'initiativeId'],
+      },
+    },
+    {
+      name: 'create_task',
+      description: 'Create an actionable task within a project and optionally assign it to an agent',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          projectId: { type: 'number', description: 'ID of the parent project' },
+          assignedAgentId: { type: 'number', description: 'Optional agent ID to assign this task to' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+          dueDate: { type: 'string', description: 'Optional ISO date string (e.g. 2025-12-31)' },
+        },
+        required: ['title', 'description', 'projectId'],
+      },
+    },
+    {
+      name: 'create_assignment',
+      description: 'Create a direct executive assignment for an agent',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          assignedAgentId: { type: 'number', description: 'Optional agent ID' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+        },
+        required: ['title', 'description'],
+      },
+    },
+  ];
+
+  const anthropic = new Anthropic({ apiKey });
+  const actionsTaken: string[] = [];
+
+  let response = await anthropic.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 4096,
+    system: systemPrompt,
+    tools,
+    messages: claudeMessages,
+  });
+
+  // Agentic loop: process tool calls until end_turn
+  while (response.stop_reason === 'tool_use') {
+    const assistantContent = response.content;
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+    for (const block of assistantContent) {
+      if (block.type !== 'tool_use') continue;
+
+      const input = block.input as Record<string, any>;
+      let result: string;
+
+      if (block.name === 'get_company_status') {
+        const [{ data: allAgents }, { data: allInitiatives }, { data: pendingTasks }] = await Promise.all([
+          supabase.from('agents').select('id, name, title, status, agent_type'),
+          supabase.from('initiatives').select('id, name, status'),
+          supabase.from('project_tasks').select('id, title, status, assigned_agent_id').neq('status', 'completed').limit(20),
+        ]);
+        result = JSON.stringify({ agents: allAgents, initiatives: allInitiatives, pendingTasks });
+
+      } else if (block.name === 'create_initiative') {
+        const { data: initiative, error } = await supabase
+          .from('initiatives')
+          .insert({ name: input.name, description: input.description, status: 'active', owner_agent_id: input.ownerAgentId || null })
+          .select().single();
+        result = error ? `Error: ${error.message}` : `Initiative created: "${initiative.name}" (ID: ${initiative.id})`;
+        if (!error) actionsTaken.push(`Created initiative: ${initiative.name}`);
+
+      } else if (block.name === 'create_project') {
+        const { data: project, error } = await supabase
+          .from('projects')
+          .insert({ initiative_id: input.initiativeId, name: input.name, description: input.description, status: 'planning', owner_agent_id: input.ownerAgentId || null })
+          .select().single();
+        result = error ? `Error: ${error.message}` : `Project created: "${project.name}" (ID: ${project.id})`;
+        if (!error) actionsTaken.push(`Created project: ${project.name}`);
+
+      } else if (block.name === 'create_task') {
+        const { data: task, error } = await supabase
+          .from('project_tasks')
+          .insert({ project_id: input.projectId, title: input.title, description: input.description, status: 'todo', assigned_agent_id: input.assignedAgentId || null, priority: input.priority || 'medium', due_date: input.dueDate || null })
+          .select().single();
+        result = error ? `Error: ${error.message}` : `Task created: "${task.title}" (ID: ${task.id})`;
+        if (!error) actionsTaken.push(`Created task: ${task.title}`);
+
+      } else if (block.name === 'create_assignment') {
+        const { data: assignment, error } = await supabase
+          .from('exec_assignments')
+          .insert({ title: input.title, description: input.description, status: 'pending', priority: input.priority || 'medium', assigned_agent_id: input.assignedAgentId || null })
+          .select().single();
+        result = error ? `Error: ${error.message}` : `Assignment created: "${assignment.title}" (ID: ${assignment.id})`;
+        if (!error) actionsTaken.push(`Created assignment: ${assignment.title}`);
+
+      } else {
+        result = `Unknown tool: ${block.name}`;
+      }
+
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+    }
+
+    claudeMessages.push({ role: 'assistant', content: assistantContent });
+    claudeMessages.push({ role: 'user', content: toolResults });
+
+    response = await anthropic.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 4096,
+      system: systemPrompt,
+      tools,
+      messages: claudeMessages,
+    });
+  }
+
+  const responseText = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map(b => b.text)
+    .join('\n');
+
+  // Save CEO response
+  await supabase.from('exec_messages').insert({
+    role: 'ceo',
+    content: responseText,
+    metadata: actionsTaken.length > 0 ? JSON.stringify({ actionsTaken }) : null,
+  });
+
+  return res.json({ response: responseText, actionsTaken });
+}
+
+// ─── Agent Run (AI) ─────────────────────────────────────────────────────────
+
+async function handleAgentRun(req: VercelRequest, res: VercelResponse, agentId: number) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on the server' });
+
+  const { data: agent, error: agentError } = await supabase
+    .from('agents').select('*').eq('id', agentId).single();
+
+  if (agentError || !agent) return res.status(404).json({ error: 'Agent not found' });
+
+  const { data: tasks } = await supabase
+    .from('project_tasks')
+    .select('id, title, description, status, priority')
+    .eq('assigned_agent_id', agentId)
+    .neq('status', 'completed')
+    .limit(10);
+
+  const taskList = tasks && tasks.length > 0
+    ? tasks.map((t: any) => `- [${t.status}] ${t.title}: ${t.description || 'No description'} (Priority: ${t.priority})`).join('\n')
+    : 'No tasks currently assigned.';
+
+  const systemPrompt = `You are ${agent.name}${agent.title ? `, ${agent.title}` : ''}. Your role: ${agent.task}.${agent.instructions ? `\n\nInstructions: ${agent.instructions}` : ''}
+
+Current assigned tasks:
+${taskList}
+
+Provide a brief status update on your work. Be specific about what you are doing to move your tasks forward and identify any blockers.`;
+
+  const anthropic = new Anthropic({ apiKey });
+
+  const response = await anthropic.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: 'Provide your current status update.' }],
+  });
+
+  const responseText = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map(b => b.text)
+    .join('\n');
+
+  // Update agent to running, record heartbeat, then set back to idle
+  await supabase.from('agents').update({ status: 'running', last_heartbeat: new Date().toISOString() }).eq('id', agentId);
+
+  const { data: heartbeat } = await supabase
+    .from('heartbeats')
+    .insert({ agent_id: agentId, status: 'idle', message: responseText })
+    .select().single();
+
+  await supabase.from('status_events').insert({ agent_id: agentId, old_status: agent.status, new_status: 'idle' });
+  await supabase.from('agents').update({ status: 'idle' }).eq('id', agentId);
+
+  return res.json({ response: responseText, heartbeat: snakeToCamel(heartbeat) });
+}
+
 // ─── Main Router ───────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -1872,6 +2134,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (agentHeartbeatsMatch) {
       return handleAgentHeartbeats(req, res, Number(agentHeartbeatsMatch[1]));
     }
+    const agentRunMatch = path.match(/^\/agents\/(\d+)\/run$/);
+    if (agentRunMatch) {
+      return handleAgentRun(req, res, Number(agentRunMatch[1]));
+    }
     const agentEventsMatch = path.match(/^\/agents\/(\d+)\/events$/);
     if (agentEventsMatch) {
       return handleAgentEvents(req, res, Number(agentEventsMatch[1]));
@@ -1896,6 +2162,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // ── Executive ────────────────────────────────────────
+    if (path === '/executive/chat') {
+      return handleExecChat(req, res);
+    }
     if (path === '/executive/messages') {
       return handleExecMessages(req, res);
     }
