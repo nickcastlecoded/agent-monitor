@@ -15,6 +15,7 @@ import AgentsList from "@/pages/agents-list";
 import CreateAgent from "@/pages/create-agent";
 import ActivityPage from "@/pages/activity";
 import WorkspacePage from "@/pages/workspace";
+import EditAgent from "@/pages/edit-agent";
 import NotFound from "@/pages/not-found";
 
 function ThemeToggle() {
@@ -37,6 +38,7 @@ function AppRouter() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/agents" component={AgentsList} />
+      <Route path="/agents/:id/edit" component={EditAgent} />
       <Route path="/agents/:id" component={AgentDetail} />
       <Route path="/create" component={CreateAgent} />
       <Route path="/workspace" component={WorkspacePage} />

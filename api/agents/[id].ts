@@ -58,6 +58,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       instructions: 'instructions',
       status: 'status',
       lastHeartbeat: 'last_heartbeat',
+      scope: 'scope',
+      outputDriveFolder: 'output_drive_folder',
+      inputDriveFiles: 'input_drive_files',
+      frequency: 'frequency',
+      memoryDriveFolder: 'memory_drive_folder',
     };
 
     for (const [camelKey, snakeKey] of Object.entries(keyMap)) {

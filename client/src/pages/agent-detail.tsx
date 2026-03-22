@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
-import { ArrowLeft, Bot, Clock, Trash2, Calendar, FileText } from "lucide-react";
+import { ArrowLeft, Bot, Clock, Trash2, Calendar, FileText, Settings, FolderOpen, FileInput, Brain, Crosshair, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -106,6 +106,16 @@ export default function AgentDetail() {
             </div>
             <div className="flex items-center gap-2">
               <StatusBadge status={agent.status} />
+              <Link href={`/agents/${id}/edit`}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-edit-agent"
+                >
+                  <Settings className="w-4 h-4 mr-1.5" />
+                  Configure
+                </Button>
+              </Link>
               <Button
                 variant="ghost"
                 size="sm"
@@ -161,6 +171,108 @@ export default function AgentDetail() {
               <p className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
                 {agent.instructions}
               </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Configuration Summary */}
+        {((agent as any).scope || (agent as any).outputDriveFolder || (agent as any).inputDriveFiles || (agent as any).memoryDriveFolder || (agent as any).frequency) && (
+          <Card className="border-card-border">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Configuration</CardTitle>
+                <Link href={`/agents/${id}/edit`}>
+                  <Button variant="ghost" size="sm" className="text-xs h-7" data-testid="button-edit-config">
+                    <Settings className="w-3 h-3 mr-1" />
+                    Edit
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(agent as any).scope && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Crosshair className="w-3 h-3" />
+                    <span className="font-medium uppercase tracking-wider">Scope</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap pl-5">
+                    {(agent as any).scope}
+                  </p>
+                </div>
+              )}
+              {(agent as any).frequency && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Clock className="w-3 h-3" />
+                    <span className="font-medium uppercase tracking-wider">Custom Frequency</span>
+                  </div>
+                  <p className="text-xs font-mono pl-5">{(agent as any).frequency}</p>
+                </div>
+              )}
+              {(agent as any).outputDriveFolder && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <FolderOpen className="w-3 h-3" />
+                    <span className="font-medium uppercase tracking-wider">Output Folder</span>
+                  </div>
+                  <a
+                    href={(agent as any).outputDriveFolder}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-mono pl-5 text-blue-500 hover:underline flex items-center gap-1"
+                  >
+                    {(agent as any).outputDriveFolder}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+              {(agent as any).inputDriveFiles && (agent as any).inputDriveFiles !== '[]' && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <FileInput className="w-3 h-3" />
+                    <span className="font-medium uppercase tracking-wider">Input Files</span>
+                  </div>
+                  <div className="pl-5 space-y-1">
+                    {(() => {
+                      try {
+                        const files = JSON.parse((agent as any).inputDriveFiles);
+                        return files.map((f: {name: string; url: string}, i: number) => (
+                          <a
+                            key={i}
+                            href={f.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-mono text-blue-500 hover:underline flex items-center gap-1"
+                          >
+                            {f.url}
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        ));
+                      } catch {
+                        return <p className="text-xs font-mono">{(agent as any).inputDriveFiles}</p>;
+                      }
+                    })()}
+                  </div>
+                </div>
+              )}
+              {(agent as any).memoryDriveFolder && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Brain className="w-3 h-3" />
+                    <span className="font-medium uppercase tracking-wider">Memory Folder</span>
+                  </div>
+                  <a
+                    href={(agent as any).memoryDriveFolder}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-mono pl-5 text-blue-500 hover:underline flex items-center gap-1"
+                  >
+                    {(agent as any).memoryDriveFolder}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

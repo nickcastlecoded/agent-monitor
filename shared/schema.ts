@@ -12,6 +12,12 @@ export const agents = sqliteTable("agents", {
   status: text("status").notNull().default("idle"),
   lastHeartbeat: text("last_heartbeat"),
   createdAt: text("created_at").notNull(),
+  // Agent configuration fields
+  scope: text("scope"),
+  outputDriveFolder: text("output_drive_folder"),
+  inputDriveFiles: text("input_drive_files"),
+  frequency: text("frequency"),
+  memoryDriveFolder: text("memory_drive_folder"),
 });
 
 export const heartbeats = sqliteTable("heartbeats", {

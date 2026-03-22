@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { ArrowLeft, Rocket } from "lucide-react";
+import { ArrowLeft, Rocket, Crosshair, FolderOpen, Brain, Clock } from "lucide-react";
 import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -36,16 +37,25 @@ const createAgentSchema = z.object({
   schedule: z.string().min(1, "Schedule is required"),
   instructions: z.string().max(5000).optional().or(z.literal("")),
   status: z.string().default("idle"),
+  scope: z.string().max(2000).optional().or(z.literal("")),
+  outputDriveFolder: z.string().max(500).optional().or(z.literal("")),
+  frequency: z.string().optional().or(z.literal("")),
+  memoryDriveFolder: z.string().max(500).optional().or(z.literal("")),
 });
 
 type CreateAgentForm = z.infer<typeof createAgentSchema>;
 
 const schedulePresets = [
+  { value: "Every 15 minutes", label: "Every 15 minutes" },
+  { value: "Every 30 minutes", label: "Every 30 minutes" },
   { value: "Every hour", label: "Every hour" },
   { value: "Every 2 hours", label: "Every 2 hours" },
   { value: "Every 6 hours", label: "Every 6 hours" },
+  { value: "Every 12 hours", label: "Every 12 hours" },
   { value: "Daily", label: "Daily" },
+  { value: "Weekdays", label: "Weekdays (Mon–Fri)" },
   { value: "Weekly", label: "Weekly" },
+  { value: "Monthly", label: "Monthly" },
 ];
 
 export default function CreateAgent() {
@@ -61,6 +71,10 @@ export default function CreateAgent() {
       schedule: "",
       instructions: "",
       status: "idle",
+      scope: "",
+      outputDriveFolder: "",
+      frequency: "",
+      memoryDriveFolder: "",
     },
   });
 
@@ -210,6 +224,110 @@ export default function CreateAgent() {
                           {...field}
                           data-testid="input-instructions"
                         />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Separator className="my-2" />
+
+                <div className="space-y-1 pt-1">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Crosshair className="w-4 h-4 text-muted-foreground" />
+                    Scope & Configuration
+                  </div>
+                  <p className="text-xs text-muted-foreground">Optional — can also be configured after creation</p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="scope"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Scope of Work</FormLabel>
+                      <FormDescription className="text-xs">
+                        Boundaries and focus areas for this agent
+                      </FormDescription>
+                      <FormControl>
+                        <Textarea
+                          placeholder={"e.g. Topics to cover, data sources, output format, constraints"}
+                          className="resize-none min-h-[80px] font-mono text-xs"
+                          {...field}
+                          data-testid="input-scope"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="frequency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Custom Frequency</FormLabel>
+                      <FormDescription className="text-xs">
+                        Cron expression or custom schedule override
+                      </FormDescription>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g. 0 9 * * 1-5"
+                          className="font-mono text-xs"
+                          {...field}
+                          data-testid="input-frequency"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="outputDriveFolder"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Output Folder (Google Drive)</FormLabel>
+                      <FormDescription className="text-xs">
+                        Where the agent saves its output files
+                      </FormDescription>
+                      <FormControl>
+                        <div className="flex items-center gap-2">
+                          <FolderOpen className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <Input
+                            placeholder="https://drive.google.com/drive/folders/..."
+                            className="font-mono text-xs"
+                            {...field}
+                            data-testid="input-output-folder"
+                          />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="memoryDriveFolder"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Memory Folder (Google Drive)</FormLabel>
+                      <FormDescription className="text-xs">
+                        Where the agent stores persistent memory between runs
+                      </FormDescription>
+                      <FormControl>
+                        <div className="flex items-center gap-2">
+                          <Brain className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <Input
+                            placeholder="https://drive.google.com/drive/folders/..."
+                            className="font-mono text-xs"
+                            {...field}
+                            data-testid="input-memory-folder"
+                          />
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
