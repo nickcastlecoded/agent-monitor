@@ -19,6 +19,10 @@ export const agents = sqliteTable("agents", {
   frequency: text("frequency"),
   memoryDriveFolder: text("memory_drive_folder"),
   connectedTools: text("connected_tools"),
+  // Organizational fields
+  teamId: integer("team_id"),
+  title: text("title"),
+  agentType: text("agent_type"),
 });
 
 export const heartbeats = sqliteTable("heartbeats", {
@@ -49,6 +53,55 @@ export const workItems = sqliteTable("work_items", {
   createdAt: text("created_at").notNull(),
 });
 
+export const teams = sqliteTable("teams", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const initiatives = sqliteTable("initiatives", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("planning"),
+  ownerAgentId: integer("owner_agent_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const projects = sqliteTable("projects", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  initiativeId: integer("initiative_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("planning"),
+  ownerAgentId: integer("owner_agent_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const projectTasks = sqliteTable("project_tasks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("pending"),
+  assignedAgentId: integer("assigned_agent_id"),
+  priority: text("priority").notNull().default("medium"),
+  dueDate: text("due_date"),
+  completedAt: text("completed_at"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const agentJobs = sqliteTable("agent_jobs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id").notNull(),
+  projectId: integer("project_id").notNull(),
+  role: text("role").notNull(),
+  assignedAt: text("assigned_at").notNull(),
+});
+
 export const insertAgentSchema = createInsertSchema(agents).omit({
   id: true,
   lastHeartbeat: true,
@@ -77,3 +130,37 @@ export type InsertStatusEvent = z.infer<typeof insertStatusEventSchema>;
 export type StatusEvent = typeof statusEvents.$inferSelect;
 export type InsertWorkItem = z.infer<typeof insertWorkItemSchema>;
 export type WorkItem = typeof workItems.$inferSelect;
+
+export const insertTeamSchema = createInsertSchema(teams).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertInitiativeSchema = createInsertSchema(initiatives).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertProjectSchema = createInsertSchema(projects).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertProjectTaskSchema = createInsertSchema(projectTasks).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertAgentJobSchema = createInsertSchema(agentJobs).omit({
+  id: true,
+  assignedAt: true,
+});
+
+export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type Team = typeof teams.$inferSelect;
+export type InsertInitiative = z.infer<typeof insertInitiativeSchema>;
+export type Initiative = typeof initiatives.$inferSelect;
+export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type Project = typeof projects.$inferSelect;
+export type InsertProjectTask = z.infer<typeof insertProjectTaskSchema>;
+export type ProjectTask = typeof projectTasks.$inferSelect;
+export type InsertAgentJob = z.infer<typeof insertAgentJobSchema>;
+export type AgentJob = typeof agentJobs.$inferSelect;

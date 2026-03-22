@@ -25,55 +25,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  const id = Number(req.query.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid project ID' });
+
   if (req.method === 'GET') {
-    const { data, error } = await supabase
-      .from('agents')
+    const { data: jobs, error } = await supabase
+      .from('agent_jobs')
       .select('*')
-      .order('created_at', { ascending: false });
+      .eq('project_id', id)
+      .order('assigned_at', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
-    return res.json(snakeToCamel(data));
+
+    // Join agent names
+    const agentIds = [...new Set((jobs || []).map((j: any) => j.agent_id).filter(Boolean))];
+    let jobsWithNames = jobs || [];
+    if (agentIds.length > 0) {
+      const { data: agents } = await supabase
+        .from('agents')
+        .select('id, name')
+        .in('id', agentIds);
+      const agentMap: Record<number, string> = {};
+      if (agents) {
+        for (const a of agents) {
+          agentMap[a.id] = a.name;
+        }
+      }
+      jobsWithNames = jobsWithNames.map((j: any) => ({
+        ...j,
+        agent_name: agentMap[j.agent_id] || null,
+      }));
+    }
+
+    return res.json(snakeToCamel(jobsWithNames));
   }
 
   if (req.method === 'POST') {
-    const { name, description, task, schedule, instructions, status, scope, outputDriveFolder, inputDriveFiles, frequency, memoryDriveFolder, connectedTools, teamId, title, agentType } = req.body;
+    const { agentId, role } = req.body;
 
-    if (!name || !task || !schedule) {
-      return res.status(400).json({ error: 'name, task, and schedule are required' });
+    if (!agentId || !role) {
+      return res.status(400).json({ error: 'agentId and role are required' });
     }
 
-    const { data: agent, error } = await supabase
-      .from('agents')
+    const { data: job, error } = await supabase
+      .from('agent_jobs')
       .insert({
-        name,
-        description: description || null,
-        task,
-        schedule,
-        instructions: instructions || null,
-        status: status || 'idle',
-        scope: scope || null,
-        output_drive_folder: outputDriveFolder || null,
-        input_drive_files: inputDriveFiles || null,
-        frequency: frequency || null,
-        memory_drive_folder: memoryDriveFolder || null,
-        connected_tools: connectedTools || null,
-        team_id: teamId || null,
-        title: title || null,
-        agent_type: agentType || 'worker',
+        agent_id: agentId,
+        project_id: id,
+        role,
       })
       .select()
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
-
-    // Create initial status event
-    await supabase.from('status_events').insert({
-      agent_id: agent.id,
-      old_status: 'none',
-      new_status: agent.status,
-    });
-
-    return res.status(201).json(snakeToCamel(agent));
+    return res.status(201).json(snakeToCamel(job));
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

@@ -26,47 +26,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const id = Number(req.query.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid agent ID' });
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid project ID' });
 
   if (req.method === 'GET') {
-    const { data: agent, error } = await supabase
-      .from('agents')
+    const { data: project, error } = await supabase
+      .from('projects')
       .select('*')
       .eq('id', id)
       .single();
 
-    if (error || !agent) return res.status(404).json({ error: 'Agent not found' });
-    return res.json(snakeToCamel(agent));
+    if (error || !project) return res.status(404).json({ error: 'Project not found' });
+
+    // Get tasks for this project
+    const { data: tasks } = await supabase
+      .from('project_tasks')
+      .select('*')
+      .eq('project_id', id)
+      .order('created_at', { ascending: false });
+
+    // Get agent jobs for this project, joined with agent name
+    const { data: jobs } = await supabase
+      .from('agent_jobs')
+      .select('*')
+      .eq('project_id', id)
+      .order('assigned_at', { ascending: false });
+
+    // Join agent names onto jobs
+    let jobsWithAgentNames = jobs || [];
+    if (jobsWithAgentNames.length > 0) {
+      const agentIds = [...new Set(jobsWithAgentNames.map((j: any) => j.agent_id).filter(Boolean))];
+      if (agentIds.length > 0) {
+        const { data: agents } = await supabase
+          .from('agents')
+          .select('id, name')
+          .in('id', agentIds);
+        const agentMap: Record<number, string> = {};
+        if (agents) {
+          for (const a of agents) {
+            agentMap[a.id] = a.name;
+          }
+        }
+        jobsWithAgentNames = jobsWithAgentNames.map((j: any) => ({
+          ...j,
+          agent_name: agentMap[j.agent_id] || null,
+        }));
+      }
+    }
+
+    return res.json({
+      ...snakeToCamel(project),
+      tasks: snakeToCamel(tasks || []),
+      jobs: snakeToCamel(jobsWithAgentNames),
+    });
   }
 
   if (req.method === 'PATCH') {
     const { data: existing } = await supabase
-      .from('agents')
+      .from('projects')
       .select('id')
       .eq('id', id)
       .single();
 
-    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    if (!existing) return res.status(404).json({ error: 'Project not found' });
 
-    // Convert camelCase body keys to snake_case for Supabase
     const updates: Record<string, any> = {};
     const keyMap: Record<string, string> = {
       name: 'name',
       description: 'description',
-      task: 'task',
-      schedule: 'schedule',
-      instructions: 'instructions',
       status: 'status',
-      lastHeartbeat: 'last_heartbeat',
-      scope: 'scope',
-      outputDriveFolder: 'output_drive_folder',
-      inputDriveFiles: 'input_drive_files',
-      frequency: 'frequency',
-      memoryDriveFolder: 'memory_drive_folder',
-      connectedTools: 'connected_tools',
-      teamId: 'team_id',
-      title: 'title',
-      agentType: 'agent_type',
+      ownerAgentId: 'owner_agent_id',
+      initiativeId: 'initiative_id',
     };
 
     for (const [camelKey, snakeKey] of Object.entries(keyMap)) {
@@ -75,8 +104,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    updates.updated_at = new Date().toISOString();
+
     const { data: updated, error } = await supabase
-      .from('agents')
+      .from('projects')
       .update(updates)
       .eq('id', id)
       .select()
@@ -88,15 +119,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'DELETE') {
     const { data: existing } = await supabase
-      .from('agents')
+      .from('projects')
       .select('id')
       .eq('id', id)
       .single();
 
-    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    if (!existing) return res.status(404).json({ error: 'Project not found' });
 
     const { error } = await supabase
-      .from('agents')
+      .from('projects')
       .delete()
       .eq('id', id);
 

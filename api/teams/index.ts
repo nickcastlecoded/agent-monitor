@@ -26,54 +26,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   if (req.method === 'GET') {
-    const { data, error } = await supabase
-      .from('agents')
+    const { data: teams, error } = await supabase
+      .from('teams')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('name', { ascending: true });
 
     if (error) return res.status(500).json({ error: error.message });
-    return res.json(snakeToCamel(data));
+
+    // Get agent count per team
+    const { data: agents } = await supabase
+      .from('agents')
+      .select('team_id');
+
+    const countMap: Record<number, number> = {};
+    if (agents) {
+      for (const a of agents) {
+        if (a.team_id) {
+          countMap[a.team_id] = (countMap[a.team_id] || 0) + 1;
+        }
+      }
+    }
+
+    const teamsWithCount = (teams || []).map((t: any) => ({
+      ...snakeToCamel(t),
+      agentCount: countMap[t.id] || 0,
+    }));
+
+    return res.json(teamsWithCount);
   }
 
   if (req.method === 'POST') {
-    const { name, description, task, schedule, instructions, status, scope, outputDriveFolder, inputDriveFiles, frequency, memoryDriveFolder, connectedTools, teamId, title, agentType } = req.body;
+    const { name, description } = req.body;
 
-    if (!name || !task || !schedule) {
-      return res.status(400).json({ error: 'name, task, and schedule are required' });
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
     }
 
-    const { data: agent, error } = await supabase
-      .from('agents')
+    const { data: team, error } = await supabase
+      .from('teams')
       .insert({
         name,
         description: description || null,
-        task,
-        schedule,
-        instructions: instructions || null,
-        status: status || 'idle',
-        scope: scope || null,
-        output_drive_folder: outputDriveFolder || null,
-        input_drive_files: inputDriveFiles || null,
-        frequency: frequency || null,
-        memory_drive_folder: memoryDriveFolder || null,
-        connected_tools: connectedTools || null,
-        team_id: teamId || null,
-        title: title || null,
-        agent_type: agentType || 'worker',
       })
       .select()
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
-
-    // Create initial status event
-    await supabase.from('status_events').insert({
-      agent_id: agent.id,
-      old_status: 'none',
-      new_status: agent.status,
-    });
-
-    return res.status(201).json(snakeToCamel(agent));
+    return res.status(201).json(snakeToCamel(team));
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

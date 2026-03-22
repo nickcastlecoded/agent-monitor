@@ -20,63 +20,30 @@ function snakeToCamel(obj: any): any {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const id = Number(req.query.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid agent ID' });
-
-  if (req.method === 'GET') {
-    const { data: agent, error } = await supabase
-      .from('agents')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error || !agent) return res.status(404).json({ error: 'Agent not found' });
-    return res.json(snakeToCamel(agent));
-  }
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid job ID' });
 
   if (req.method === 'PATCH') {
     const { data: existing } = await supabase
-      .from('agents')
+      .from('agent_jobs')
       .select('id')
       .eq('id', id)
       .single();
 
-    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    if (!existing) return res.status(404).json({ error: 'Job not found' });
 
-    // Convert camelCase body keys to snake_case for Supabase
     const updates: Record<string, any> = {};
-    const keyMap: Record<string, string> = {
-      name: 'name',
-      description: 'description',
-      task: 'task',
-      schedule: 'schedule',
-      instructions: 'instructions',
-      status: 'status',
-      lastHeartbeat: 'last_heartbeat',
-      scope: 'scope',
-      outputDriveFolder: 'output_drive_folder',
-      inputDriveFiles: 'input_drive_files',
-      frequency: 'frequency',
-      memoryDriveFolder: 'memory_drive_folder',
-      connectedTools: 'connected_tools',
-      teamId: 'team_id',
-      title: 'title',
-      agentType: 'agent_type',
-    };
-
-    for (const [camelKey, snakeKey] of Object.entries(keyMap)) {
-      if (req.body[camelKey] !== undefined) {
-        updates[snakeKey] = req.body[camelKey];
-      }
+    if (req.body.role !== undefined) {
+      updates.role = req.body.role;
     }
 
     const { data: updated, error } = await supabase
-      .from('agents')
+      .from('agent_jobs')
       .update(updates)
       .eq('id', id)
       .select()
@@ -88,15 +55,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'DELETE') {
     const { data: existing } = await supabase
-      .from('agents')
+      .from('agent_jobs')
       .select('id')
       .eq('id', id)
       .single();
 
-    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    if (!existing) return res.status(404).json({ error: 'Job not found' });
 
     const { error } = await supabase
-      .from('agents')
+      .from('agent_jobs')
       .delete()
       .eq('id', id);
 

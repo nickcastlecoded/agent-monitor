@@ -18,6 +18,13 @@ function snakeToCamel(obj: any): any {
   return obj;
 }
 
+const priorityOrder: Record<string, number> = {
+  urgent: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -25,55 +32,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  const id = Number(req.query.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid project ID' });
+
   if (req.method === 'GET') {
-    const { data, error } = await supabase
-      .from('agents')
+    const { data: tasks, error } = await supabase
+      .from('project_tasks')
       .select('*')
-      .order('created_at', { ascending: false });
+      .eq('project_id', id)
+      .order('created_at', { ascending: true });
 
     if (error) return res.status(500).json({ error: error.message });
-    return res.json(snakeToCamel(data));
+
+    // Sort by priority (urgent first), then by created_at
+    const sorted = (tasks || []).sort((a: any, b: any) => {
+      const pa = priorityOrder[a.priority] ?? 2;
+      const pb = priorityOrder[b.priority] ?? 2;
+      if (pa !== pb) return pa - pb;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+
+    return res.json(snakeToCamel(sorted));
   }
 
   if (req.method === 'POST') {
-    const { name, description, task, schedule, instructions, status, scope, outputDriveFolder, inputDriveFiles, frequency, memoryDriveFolder, connectedTools, teamId, title, agentType } = req.body;
+    const { title, description, status, assignedAgentId, priority, dueDate } = req.body;
 
-    if (!name || !task || !schedule) {
-      return res.status(400).json({ error: 'name, task, and schedule are required' });
+    if (!title) {
+      return res.status(400).json({ error: 'title is required' });
     }
 
-    const { data: agent, error } = await supabase
-      .from('agents')
+    const { data: task, error } = await supabase
+      .from('project_tasks')
       .insert({
-        name,
+        project_id: id,
+        title,
         description: description || null,
-        task,
-        schedule,
-        instructions: instructions || null,
-        status: status || 'idle',
-        scope: scope || null,
-        output_drive_folder: outputDriveFolder || null,
-        input_drive_files: inputDriveFiles || null,
-        frequency: frequency || null,
-        memory_drive_folder: memoryDriveFolder || null,
-        connected_tools: connectedTools || null,
-        team_id: teamId || null,
-        title: title || null,
-        agent_type: agentType || 'worker',
+        status: status || 'pending',
+        assigned_agent_id: assignedAgentId || null,
+        priority: priority || 'medium',
+        due_date: dueDate || null,
       })
       .select()
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
-
-    // Create initial status event
-    await supabase.from('status_events').insert({
-      agent_id: agent.id,
-      old_status: 'none',
-      new_status: agent.status,
-    });
-
-    return res.status(201).json(snakeToCamel(agent));
+    return res.status(201).json(snakeToCamel(task));
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

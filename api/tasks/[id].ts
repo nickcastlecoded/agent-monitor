@@ -26,47 +26,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const id = Number(req.query.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid agent ID' });
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid task ID' });
 
   if (req.method === 'GET') {
-    const { data: agent, error } = await supabase
-      .from('agents')
+    const { data: task, error } = await supabase
+      .from('project_tasks')
       .select('*')
       .eq('id', id)
       .single();
 
-    if (error || !agent) return res.status(404).json({ error: 'Agent not found' });
-    return res.json(snakeToCamel(agent));
+    if (error || !task) return res.status(404).json({ error: 'Task not found' });
+    return res.json(snakeToCamel(task));
   }
 
   if (req.method === 'PATCH') {
     const { data: existing } = await supabase
-      .from('agents')
+      .from('project_tasks')
       .select('id')
       .eq('id', id)
       .single();
 
-    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    if (!existing) return res.status(404).json({ error: 'Task not found' });
 
-    // Convert camelCase body keys to snake_case for Supabase
     const updates: Record<string, any> = {};
     const keyMap: Record<string, string> = {
-      name: 'name',
-      description: 'description',
-      task: 'task',
-      schedule: 'schedule',
-      instructions: 'instructions',
-      status: 'status',
-      lastHeartbeat: 'last_heartbeat',
-      scope: 'scope',
-      outputDriveFolder: 'output_drive_folder',
-      inputDriveFiles: 'input_drive_files',
-      frequency: 'frequency',
-      memoryDriveFolder: 'memory_drive_folder',
-      connectedTools: 'connected_tools',
-      teamId: 'team_id',
       title: 'title',
-      agentType: 'agent_type',
+      description: 'description',
+      status: 'status',
+      assignedAgentId: 'assigned_agent_id',
+      priority: 'priority',
+      dueDate: 'due_date',
+      completedAt: 'completed_at',
     };
 
     for (const [camelKey, snakeKey] of Object.entries(keyMap)) {
@@ -76,7 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { data: updated, error } = await supabase
-      .from('agents')
+      .from('project_tasks')
       .update(updates)
       .eq('id', id)
       .select()
@@ -88,15 +78,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'DELETE') {
     const { data: existing } = await supabase
-      .from('agents')
+      .from('project_tasks')
       .select('id')
       .eq('id', id)
       .single();
 
-    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    if (!existing) return res.status(404).json({ error: 'Task not found' });
 
     const { error } = await supabase
-      .from('agents')
+      .from('project_tasks')
       .delete()
       .eq('id', id);
 

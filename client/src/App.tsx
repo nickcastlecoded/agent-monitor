@@ -17,6 +17,8 @@ import CreateAgent from "@/pages/create-agent";
 import ActivityPage from "@/pages/activity";
 import WorkspacePage from "@/pages/workspace";
 import EditAgent from "@/pages/edit-agent";
+import TeamsPage from "@/pages/teams";
+import InitiativesPage from "@/pages/initiatives";
 import UsersPage from "@/pages/users";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
@@ -45,6 +47,8 @@ function AppRouter() {
       <Route path="/agents/:id" component={AgentDetail} />
       <Route path="/create" component={CreateAgent} />
       <Route path="/workspace" component={WorkspacePage} />
+      <Route path="/teams" component={TeamsPage} />
+      <Route path="/initiatives" component={InitiativesPage} />
       <Route path="/activity" component={ActivityPage} />
       <Route path="/users" component={UsersPage} />
       <Route component={NotFound} />

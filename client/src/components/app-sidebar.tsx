@@ -1,4 +1,4 @@
-import { LayoutDashboard, Bot, Activity, Plus, FolderOpen, Users, LogOut, UserCircle } from "lucide-react";
+import { LayoutDashboard, Bot, Activity, Plus, FolderOpen, Users, LogOut, UserCircle, UsersRound, Target } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -18,6 +18,8 @@ import { Separator } from "@/components/ui/separator";
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Workspace", url: "/workspace", icon: FolderOpen },
+  { title: "Teams", url: "/teams", icon: UsersRound },
+  { title: "Initiatives", url: "/initiatives", icon: Target },
   { title: "Agents", url: "/agents", icon: Bot },
   { title: "Activity", url: "/activity", icon: Activity },
 ];
